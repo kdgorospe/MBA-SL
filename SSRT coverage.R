@@ -1,4 +1,4 @@
-# Test case for SSRT coverage
+# Create data visualizations of SSRT coverage of seafood production / markets
 # Export SFW mapping dictionary to CSV, if available preferably CSV UTF-8
 # this supports virtually all characters (including non-Latin alphabets) and uses standard line endings (\n)
 # read.csv and read_csv functions designed specifically for UTF-8
@@ -16,21 +16,21 @@ library(purrr)
 
 ## FIXIT - create script for adding SSRT.YN column to SFW Mapping Dictionary file and identifying Y's 
 # Read the CSV file into a data frame.
-df <- read.csv("Data/2025 SFW Mapping Dictionary - SSRT coverage.csv", header = TRUE)
+df <- read.csv("Data/SSRT Coverage/2025 SFW Mapping Dictionary - SSRT coverage.csv", header = TRUE)
 
 # Replace blank rows (empty strings) and NA values in SSRT.YN with "N".
 df <- df %>%
   mutate(SSRT.YN = if_else(is.na(SSRT.YN) | SSRT.YN == "", "N", SSRT.YN))
 
-# Create categories for SSRT coverage comparisons; do this by breaking up ISSCAAP groups which are too broad
+# ISSCAAP groups are broader than SSRT risk profiles: Create column "SSRT.group" for each of the risk profile species groups and "Other"
 # df %>% filter(ISSCAAP.group == "Squids, cuttlefishes, octopuses") %>% select(Scientific.name) %>% distinct()
 # df %>% filter(ISSCAAP.group == "Tunas, bonitos, billfishes") %>% select(Scientific.name) %>% distinct()
 # Use AI to classify scientific names as squids vs cuttlefishes vs octopuses and return as a character string list in quotation marks
 squid_species <- c("Alloteuthis media", "Alloteuthis spp", "Alloteuthis subulata", "Berryteuthis magister", "Dosidicus gigas", "Doryteuthis gahi", "Doryteuthis opalescens", "Doryteuthis pealeii", "Doryteuthis pleii", "Histioteuthis spp", "Illex argentinus", "Illex coindetii", "Illex illecebrosus", "Illex spp", "Loliginidae", "Loliginidae, Ommastrephidae", "Loligo forbesii", "Loligo reynaudii", "Loligo spp", "Loligo vulgaris", "Lolliguncula diomedeae", "Martialia hyadesi", "Nototodarus sloanii", "Ommastrephes bartramii", "Ommastrephes spp", "Ommastrephidae", "Onykia spp", "Sepioteuthis lessoniana", "Sepioteuthis sepioidea", "Sthenoteuthis pteropus", "Todarodes filippovae", "Todarodes pacificus", "Todarodes sagittatus", "Todarodes spp", "Todaropsis eblanae", "Uroteuthis (Photololigo) duvaucelii")
-cuttlefish_species <- c("Rossia macrosoma", "Sepia bertheloti", "Sepia elegans", "Sepia officinalis", "Sepia orbignyana", "Sepia pharaonis", "Sepia spp", "Sepiola rondeletii", "Sepiidae, Sepiolidae") # includes BOBTAIL SQUID
+cuttlefish_species <- c("Rossia macrosoma", "Sepia bertheloti", "Sepia elegans", "Sepia officinalis", "Sepia orbignyana", "Sepia pharaonis", "Sepia spp", "Sepiola rondeletii", "Sepiidae, Sepiolidae") # includes BOBTAIL SQUID family Sepiolidae
 octopus_species <- c("Callistoctopus macropus", "Eledone cirrhosa", "Eledone moschata", "Eledone spp", "Enteroctopus magnificus", "Octopodidae", "Octopus maya", "Octopus salutii", "Octopus spp", "Octopus vulgaris", "Pinnoctopus cordiformis", "Scaeurgus unicirrhus")
 # Some entries labeled as cephalopoda, which is the scientific grouping for all of the above
-# Both squid and cuttlefish mentioned in SSRT reports, so combining both, but removing ocotpus
+# Both squid and cuttlefish mentioned in SSRT reports, so combining both, but removing octopus
 # For now, keeping bobtail squid as part of cuttlefish group because they are often sold as "cuttlefish" due to their similar cooking properties and shape
 
 # For tuna comparisons, for now, only look at tropical tuna species (bigeye, skipjack, and yellowfin), which are the focus of the SSRT profiles
@@ -39,7 +39,6 @@ tuna_species <- c("Allothunnus fallai", "Auxis rochei", "Auxis thazard", "Auxis 
 # The remaining species found in the much broader ISSCAAP group "Tunas, bonitos, billfishes" are: bonitos, mackerel, wahoo, bonitos, other mackerel-like species; all not typically traded as "tuna"
 
 # For shrimp, can continue to use ISSCAAP group "Shrimps, prawns"
-
 df <- df %>%
   mutate(SSRT.group = case_when(
     # Match and label based on the different species list
