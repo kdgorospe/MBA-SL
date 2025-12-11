@@ -27,55 +27,31 @@ df <- read.csv("Data/SSRT Coverage/2025 SFW Mapping Dictionary - SSRT coverage.c
   )
 
 # To output list of countries
-country_risk_template <- df %>%
-  select(Country, Country.code) %>%
-  distinct() %>%
-  arrange(Country.code) %>%
-  slice(-(1:2)) # remove blank row and ICCAT row
+# country_risk_template <- df %>%
+#   select(Country, Country.code) %>%
+#   distinct() %>%
+#   arrange(Country.code) %>%
+#   slice(-(1:2)) 
+# remove first two rows - blank row and ICCAT row
 # write.csv(country_risk_template, "country_risk_template.csv", row.names = FALSE)
 # Tried to output a table of countries, and use AI to fill in risk, but Gemini said it was too big of a task??
 
-wgi <- read.csv("Data/SSRT Coverage/WGI data/wgidataset.csv", header = TRUE) 
+tip <- read.csv("Data/SSRT Coverage/TIP Tiers - 2024 report.csv", header = TRUE) 
 
-wgi_clean <- wgi %>%
-  filter(indicator == "rl") %>% # i.e., "Rule of Law" subindex
-  filter(year == 2023) %>%
-  select(code, estimate) %>%
-  rename(Country.code = code) %>%
-  rename(wgi.rol = estimate) %>% # WGI rule of law
-  # as.numeric() converts to number, coercing any non-numeric text (like "N/A" or ".." ) to NA
-  mutate(wgi.rol = as.numeric(wgi.rol)) %>%
-  # Calculate quintiles and assign to bins
-  mutate(
-    wgi.risk = case_when(
-      # High ROL scores (high governance quality) get lower risk labels
-      wgi.rol <= quantile(wgi.rol, 0.2, na.rm = TRUE) ~ "Very High Risk", # Bottom 20%
-      wgi.rol <= quantile(wgi.rol, 0.4, na.rm = TRUE) ~ "High Risk",
-      wgi.rol <= quantile(wgi.rol, 0.6, na.rm = TRUE) ~ "Medium Risk",
-      wgi.rol <= quantile(wgi.rol, 0.8, na.rm = TRUE) ~ "Low Risk",
-      # Top 20% of scores (highest ROL)
-      TRUE ~ "Very Low Risk" 
-    )
-  ) 
-
-# Join WGI risk with SFW Mapping Dictionary 
+# Join TIP risk with SFW Mapping Dictionary 
 # Use a left_join to ensure all countries from the original 'df' are kept
 df_risk <- df %>%
-  left_join(wgi_clean, by = "Country.code") %>%
-  mutate(wgi.risk = replace_na(wgi.risk, "No Risk Score")) %>%
-  # Convert the new column to a factor for proper sorting and visualization
-  # The levels ensure the categories are ordered from Low Risk to High Risk
-  mutate(
-    wgi.risk = factor(
-      wgi.risk,
-      levels = c("No Risk Score", "Very Low Risk", "Low Risk", "Medium Risk", "High Risk", "Very High Risk")
-    )
-  )
+  left_join(tip, by = c("Country.code" = "Country_Code")) %>%
+  mutate(Tier_Placement = replace_na(Tier_Placement, "No TIP Ranking")) %>%
+  mutate(Tier_Placement = if_else(
+    Tier_Placement == "Special Case", 
+    "No TIP Ranking", 
+    Tier_Placement)) # Keep the original value if the condition is FALSE
 
-# Check that anything with missing data (wgi.rol) should have "No Risk Score" under wgi.risk
+# Check that anything with missing data (wgi.rol) should have "No Risk Score" under Tier_Placement
 df_risk %>%
-  filter(is.na(wgi.rol)) %>%
-  select(Country, Country.code, wgi.rol, wgi.risk) %>%
+  filter(is.na(Tier_Placement)) %>%
+  select(Country, Country.code, Tier_Placement) %>%
   distinct()
 
 # ISSCAAP groups are broader than SSRT risk profiles: Create column "SSRT.group" for each of the risk profile species groups and "Other"
@@ -123,21 +99,21 @@ df_risk %>%
 # Plot only risk scores (no SSRT coverage)
 
 risk_dat <- df_risk %>%
-  group_by(wgi.risk) %>%
+  group_by(Tier_Placement) %>%
   summarise(volume = sum(Volume..mt., na.rm = TRUE), .groups = 'drop') %>%
   mutate(percentage = (volume / sum(volume)) * 100)
 
 # Define colors: "Paired" palette for the main groups and a separate color for "Other".
-risk_colors <- brewer.pal(n=6, name = "Reds")
+risk_colors <- brewer.pal(n=5, name = "Reds")
 
 # Create donut chart based on risk groups
-risk_donut <- ggplot(risk_dat, aes(x = 2, y = percentage, fill = wgi.risk)) +
+risk_donut <- ggplot(risk_dat, aes(x = 2, y = percentage, fill = Tier_Placement)) +
   geom_bar(stat = "identity", width = 1, position = position_stack(reverse = TRUE)) +
   coord_polar(theta = "y") +
   xlim(c(0.5, 2.5)) +
   labs(
     title = "Seafood Risk",
-    subtitle = "Based on World Governance Index Rule of Law Scores",
+    subtitle = "Based on 2024 TIP Report",
     fill = "Category"
   ) +
   theme_void() +
@@ -153,23 +129,23 @@ risk_donut <- ggplot(risk_dat, aes(x = 2, y = percentage, fill = wgi.risk)) +
             position = position_stack(vjust = 0.5, reverse = TRUE))
 
 # Save the first plot as a PNG file.
-ggsave("global_seafood_risk_levels.png", plot = risk_donut, width = 8, height = 8)
+ggsave("TIP-global_seafood_risk_levels.png", plot = risk_donut, width = 8, height = 8)
 
 ##############################################################################
 # Plot total seafood risk production scores with SSRT coverage
 global_dat <- df_risk %>%
-  group_by(wgi.risk, SSRT.YN) %>%
+  group_by(Tier_Placement, SSRT.YN) %>%
   summarise(volume = sum(Volume..mt., na.rm = TRUE), .groups = 'drop') %>%
   mutate(percentage = (volume / sum(volume) * 100))
 
-global_dat$label <- paste(global_dat$wgi.risk, " (SSRT:", global_dat$SSRT.YN, ")")
+global_dat$label <- paste(global_dat$Tier_Placement, " (SSRT:", global_dat$SSRT.YN, ")")
 
 # Manually set the order of the categories in the legend.
 global_dat$label <- factor(global_dat$label, levels = c(unique(global_dat$label)))
 
 # Define colors: "Paired" palette for the main groups and a separate color for "Other".
 paired_colors <- brewer.pal(10, "Paired") # one for each pairing (Very Low Risk N and Very Low Risk Y, etc)
-global_colors <- c("grey50", paired_colors)
+global_colors <- c("grey50", paired_colors) #grey for No TIP Ranking
 
 # Create donut chart based on risk groups
 global_donut <- ggplot(global_dat, aes(x = 2, y = percentage, fill = label)) +
@@ -178,7 +154,7 @@ global_donut <- ggplot(global_dat, aes(x = 2, y = percentage, fill = label)) +
   xlim(c(0.5, 2.5)) +
   labs(
     title = "Seafood Risk",
-    subtitle = "Based on World Governance Index Rule of Law Scores",
+    subtitle = "Based on 2024 TIP Report",
     fill = "Category"
   ) +
   theme_void() +
@@ -194,7 +170,7 @@ global_donut <- ggplot(global_dat, aes(x = 2, y = percentage, fill = label)) +
             position = position_stack(vjust = 0.5, reverse = TRUE))
 
 # Save the first plot as a PNG file.
-ggsave("global_seafood_risk_levels_with_SSRT_coverage.png", plot = global_donut, width = 8, height = 8)
+ggsave("TIP-global_seafood_risk_levels_with_SSRT_coverage.png", plot = global_donut, width = 8, height = 8)
 
 ##############################################################################
 # VERY HIGH RISK
@@ -204,8 +180,8 @@ ggsave("global_seafood_risk_levels_with_SSRT_coverage.png", plot = global_donut,
 groups_of_interest <- c("Shrimp and prawn", "Tuna", "Squid and cuttlefish")
 
 very_hi_dat <- df_risk %>%
-  filter(wgi.risk == "Very High Risk") %>%
-  group_by(SSRT.group, SSRT.YN, wgi.risk) %>%
+  filter(Tier_Placement == "Tier 3") %>%
+  group_by(SSRT.group, SSRT.YN, Tier_Placement) %>%
   summarise(volume = sum(Volume..mt., na.rm = TRUE), .groups = 'drop') %>%
   mutate(
     # Check if the value in 'SSRT.group' is NOT in 'groups_of_interest'
@@ -218,7 +194,7 @@ very_hi_dat <- df_risk %>%
     )
   ) %>%
   # Summarise again with the new labels
-  group_by(SSRT.group, SSRT.YN, wgi.risk) %>%
+  group_by(SSRT.group, SSRT.YN, Tier_Placement) %>%
   summarise(volume = sum(volume, na.rm = TRUE), .groups = 'drop') %>%
   mutate(
     # Replace all NA values in the 'SSRT.group' column with "Other"
@@ -234,6 +210,7 @@ very_hi_dat$label <- factor(very_hi_dat$label,
                             levels = c("Shrimp and prawn  (SSRT: N )", 
                                        "Shrimp and prawn  (SSRT: Y )",
                                        "Squid and cuttlefish  (SSRT: N )",
+                                       "Squid and cuttlefish  (SSRT: Y )",
                                        "Tuna  (SSRT: N )",
                                        "Tuna  (SSRT: Y )",
                                        "Other  (SSRT: N )"))
@@ -242,7 +219,7 @@ very_hi_dat$label <- factor(very_hi_dat$label,
 # Shrimp colors
 shrimp_colors <- brewer.pal(n = 5, name = "Reds")[c(2,4)] 
 # Squid colors
-squid_colors <- brewer.pal(n = 5, name = "Blues")[3]
+squid_colors <- brewer.pal(n = 5, name = "Blues")[c(2,4)] 
 # Tuna colors
 tuna_colors <- brewer.pal(n = 5, name = "Greens")[c(2,4)] 
 # Other colors
@@ -256,7 +233,7 @@ very_hi_donut <- ggplot(very_hi_dat, aes(x = 2, y = percentage, fill = label)) +
   xlim(c(0.5, 2.5)) +
   labs(
     title = "SSRT Coverage of Very High Risk Seafood Production",
-    subtitle = "Based on World Governance Index Rule of Law",
+    subtitle = "Based on 2024 TIP Report (Tier 3 Countries)",
     fill = "Category"
   ) +
   theme_void() +
@@ -271,14 +248,14 @@ very_hi_donut <- ggplot(very_hi_dat, aes(x = 2, y = percentage, fill = label)) +
   geom_text(aes(label = sprintf("%.1f%%", percentage)),
             position = position_stack(vjust = 0.5, reverse = TRUE))
 
-ggsave("SSRT_coverage_of_very_high_risk_seafood.png", plot = very_hi_donut, width = 8, height = 8)
+ggsave("SSRT_coverage_of_tier_3_seafood.png", plot = very_hi_donut, width = 8, height = 8)
 
 ##############################################################################
 # HIGH RISK
 
 hi_dat <- df_risk %>%
-  filter(wgi.risk == "High Risk") %>%
-  group_by(SSRT.group, SSRT.YN, wgi.risk) %>%
+  filter(Tier_Placement == "Tier 2 Watch List") %>%
+  group_by(SSRT.group, SSRT.YN, Tier_Placement) %>%
   summarise(volume = sum(Volume..mt., na.rm = TRUE), .groups = 'drop') %>%
   mutate(
     # Check if the value in 'SSRT.group' is NOT in 'groups_of_interest'
@@ -291,7 +268,7 @@ hi_dat <- df_risk %>%
     )
   ) %>%
   # Summarise again with the new labels
-  group_by(SSRT.group, SSRT.YN, wgi.risk) %>%
+  group_by(SSRT.group, SSRT.YN, Tier_Placement) %>%
   summarise(volume = sum(volume, na.rm = TRUE), .groups = 'drop') %>%
   mutate(
     # Replace all NA values in the 'SSRT.group' column with "Other"
@@ -303,14 +280,13 @@ hi_dat$label <- paste(hi_dat$SSRT.group, " (SSRT:", hi_dat$SSRT.YN, ")")
 # Manually set the order of the categories in the legend.
 hi_dat$label <- factor(hi_dat$label, 
                        levels = c("Shrimp and prawn  (SSRT: N )", 
-                                  "Shrimp and prawn  (SSRT: Y )",
                                   "Squid and cuttlefish  (SSRT: N )",
                                   "Tuna  (SSRT: N )",
                                   "Tuna  (SSRT: Y )",
                                   "Other  (SSRT: N )"))
 
 # Shrimp colors
-shrimp_colors <- brewer.pal(n = 5, name = "Reds")[c(2,4)] 
+shrimp_colors <- brewer.pal(n = 5, name = "Reds")[3]
 # Squid colors
 squid_colors <- brewer.pal(n = 5, name = "Blues")[3]
 # Tuna colors
@@ -326,7 +302,7 @@ hi_donut <- ggplot(hi_dat, aes(x = 2, y = percentage, fill = label)) +
   xlim(c(0.5, 2.5)) +
   labs(
     title = "SSRT Coverage of High Risk Seafood Production",
-    subtitle = "Based on World Governance Index Rule of Law",
+    subtitle = "Based on 2024 TIP Report (Tier 2 Watch List Countries)",
     fill = "Category"
   ) +
   theme_void() +
@@ -341,15 +317,15 @@ hi_donut <- ggplot(hi_dat, aes(x = 2, y = percentage, fill = label)) +
   geom_text(aes(label = sprintf("%.1f%%", percentage)),
             position = position_stack(vjust = 0.5, reverse = TRUE))
 
-ggsave("SSRT_coverage_of_high_risk_seafood.png", plot = hi_donut, width = 8, height = 8)
+ggsave("SSRT_coverage_of_tier_2_watchlist_seafood.png", plot = hi_donut, width = 8, height = 8)
 
 
 ##############################################################################
 # MEDIUM RISK
 
 med_dat <- df_risk %>%
-  filter(wgi.risk == "Medium Risk") %>%
-  group_by(SSRT.group, SSRT.YN, wgi.risk) %>%
+  filter(Tier_Placement == "Tier 2") %>%
+  group_by(SSRT.group, SSRT.YN, Tier_Placement) %>%
   summarise(volume = sum(Volume..mt., na.rm = TRUE), .groups = 'drop') %>%
   mutate(
     # Check if the value in 'SSRT.group' is NOT in 'groups_of_interest'
@@ -362,7 +338,7 @@ med_dat <- df_risk %>%
     )
   ) %>%
   # Summarise again with the new labels
-  group_by(SSRT.group, SSRT.YN, wgi.risk) %>%
+  group_by(SSRT.group, SSRT.YN, Tier_Placement) %>%
   summarise(volume = sum(volume, na.rm = TRUE), .groups = 'drop') %>%
   mutate(
     # Replace all NA values in the 'SSRT.group' column with "Other"
@@ -376,7 +352,6 @@ med_dat$label <- factor(med_dat$label,
                        levels = c("Shrimp and prawn  (SSRT: N )", 
                                   "Shrimp and prawn  (SSRT: Y )",
                                   "Squid and cuttlefish  (SSRT: N )",
-                                  "Squid and cuttlefish  (SSRT: Y )",
                                   "Tuna  (SSRT: N )",
                                   "Tuna  (SSRT: Y )",
                                   "Other  (SSRT: N )"))
@@ -384,7 +359,7 @@ med_dat$label <- factor(med_dat$label,
 # Shrimp colors
 shrimp_colors <- brewer.pal(n = 5, name = "Reds")[c(2,4)] 
 # Squid colors
-squid_colors <- brewer.pal(n = 5, name = "Blues")[c(2,4)] 
+squid_colors <- brewer.pal(n = 5, name = "Blues")[3] 
 # Tuna colors
 tuna_colors <- brewer.pal(n = 5, name = "Greens")[c(2,4)] 
 # Other colors
@@ -398,7 +373,7 @@ med_donut <- ggplot(med_dat, aes(x = 2, y = percentage, fill = label)) +
   xlim(c(0.5, 2.5)) +
   labs(
     title = "SSRT Coverage of Medium Risk Seafood Production",
-    subtitle = "Based on World Governance Index Rule of Law",
+    subtitle = "Based on 2024 TIP Report (Tier 2 Countries)",
     fill = "Category"
   ) +
   theme_void() +
@@ -413,14 +388,14 @@ med_donut <- ggplot(med_dat, aes(x = 2, y = percentage, fill = label)) +
   geom_text(aes(label = sprintf("%.1f%%", percentage)),
             position = position_stack(vjust = 0.5, reverse = TRUE))
 
-ggsave("SSRT_coverage_of_medium_risk_seafood.png", plot = med_donut, width = 8, height = 8)
+ggsave("SSRT_coverage_of_tier_2_seafood.png", plot = med_donut, width = 8, height = 8)
 
 ##############################################################################
 # LOW RISK
 
 low_dat <- df_risk %>%
-  filter(wgi.risk == "Low Risk") %>%
-  group_by(SSRT.group, SSRT.YN, wgi.risk) %>%
+  filter(Tier_Placement == "Tier 1") %>%
+  group_by(SSRT.group, SSRT.YN, Tier_Placement) %>%
   summarise(volume = sum(Volume..mt., na.rm = TRUE), .groups = 'drop') %>%
   mutate(
     # Check if the value in 'SSRT.group' is NOT in 'groups_of_interest'
@@ -433,7 +408,7 @@ low_dat <- df_risk %>%
     )
   ) %>%
   # Summarise again with the new labels
-  group_by(SSRT.group, SSRT.YN, wgi.risk) %>%
+  group_by(SSRT.group, SSRT.YN, Tier_Placement) %>%
   summarise(volume = sum(volume, na.rm = TRUE), .groups = 'drop') %>%
   mutate(
     # Replace all NA values in the 'SSRT.group' column with "Other"
@@ -468,7 +443,7 @@ low_donut <- ggplot(low_dat, aes(x = 2, y = percentage, fill = label)) +
   xlim(c(0.5, 2.5)) +
   labs(
     title = "SSRT Coverage of Low Risk Seafood Production",
-    subtitle = "Based on World Governance Index Rule of Law",
+    subtitle = "Based on 2024 TIP Report",
     fill = "Category"
   ) +
   theme_void() +
@@ -483,15 +458,15 @@ low_donut <- ggplot(low_dat, aes(x = 2, y = percentage, fill = label)) +
   geom_text(aes(label = sprintf("%.1f%%", percentage)),
             position = position_stack(vjust = 0.5, reverse = TRUE))
 
-ggsave("SSRT_coverage_of_low_risk_seafood.png", plot = low_donut, width = 8, height = 8)
+ggsave("SSRT_coverage_of_tier_1_seafood.png", plot = low_donut, width = 8, height = 8)
 
 
 ##############################################################################
 # VERY LOW RISK
 
 very_low_dat <- df_risk %>%
-  filter(wgi.risk == "Very Low Risk") %>%
-  group_by(SSRT.group, SSRT.YN, wgi.risk) %>%
+  filter(Tier_Placement == "Very Low Risk") %>%
+  group_by(SSRT.group, SSRT.YN, Tier_Placement) %>%
   summarise(volume = sum(Volume..mt., na.rm = TRUE), .groups = 'drop') %>%
   mutate(
     # Check if the value in 'SSRT.group' is NOT in 'groups_of_interest'
@@ -504,7 +479,7 @@ very_low_dat <- df_risk %>%
     )
   ) %>%
   # Summarise again with the new labels
-  group_by(SSRT.group, SSRT.YN, wgi.risk) %>%
+  group_by(SSRT.group, SSRT.YN, Tier_Placement) %>%
   summarise(volume = sum(volume, na.rm = TRUE), .groups = 'drop') %>%
   mutate(
     # Replace all NA values in the 'SSRT.group' column with "Other"
@@ -539,7 +514,7 @@ very_low_donut <- ggplot(very_low_dat, aes(x = 2, y = percentage, fill = label))
   xlim(c(0.5, 2.5)) +
   labs(
     title = "SSRT Coverage of Very Low Risk Seafood Production",
-    subtitle = "Based on World Governance Index Rule of Law",
+    subtitle = "Based on 2024 TIP Report",
     fill = "Category"
   ) +
   theme_void() +
@@ -560,8 +535,8 @@ ggsave("SSRT_coverage_of_very_low_risk_seafood.png", plot = very_low_donut, widt
 # NO RISK SCORES
 
 no_scores_dat <- df_risk %>%
-  filter(wgi.risk == "No Risk Score") %>%
-  group_by(SSRT.group, SSRT.YN, wgi.risk) %>%
+  filter(Tier_Placement == "No Risk Score") %>%
+  group_by(SSRT.group, SSRT.YN, Tier_Placement) %>%
   summarise(volume = sum(Volume..mt., na.rm = TRUE), .groups = 'drop') %>%
   mutate(
     # Check if the value in 'SSRT.group' is NOT in 'groups_of_interest'
@@ -574,7 +549,7 @@ no_scores_dat <- df_risk %>%
     )
   ) %>%
   # Summarise again with the new labels
-  group_by(SSRT.group, SSRT.YN, wgi.risk) %>%
+  group_by(SSRT.group, SSRT.YN, Tier_Placement) %>%
   summarise(volume = sum(volume, na.rm = TRUE), .groups = 'drop') %>%
   mutate(
     # Replace all NA values in the 'SSRT.group' column with "Other"
@@ -608,7 +583,7 @@ no_scores_donut <- ggplot(no_scores_dat, aes(x = 2, y = percentage, fill = label
   xlim(c(0.5, 2.5)) +
   labs(
     title = "SSRT Coverage of Seafood Production with No Risk Score",
-    subtitle = "Based on World Governance Index Rule of Law",
+    subtitle = "Based on 2024 TIP Report",
     fill = "Category"
   ) +
   theme_void() +
