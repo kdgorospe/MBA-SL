@@ -114,19 +114,24 @@ df_risk %>%
   group_by(SSRT.group, SSRT.YN) %>%
   summarise(volume = sum(Volume..mt., na.rm = TRUE), .groups = 'drop')
 
-##### LEFT OFF HERE
-# Calculate the total overall volume to use for percentage calculation.
-total_overall_volume <- sum(df_risk$Volume..mt., na.rm = TRUE)
 
-global_dat <- df_risk %>%
+
+
+########################################
+# PLOTS
+######################################## 
+# Plot only risk scores (no SSRT coverage)
+
+risk_dat <- df_risk %>%
   group_by(wgi.risk) %>%
   summarise(volume = sum(Volume..mt., na.rm = TRUE), .groups = 'drop') %>%
   mutate(percentage = (volume / total_overall_volume) * 100)
 
-risk_colors <- brewer.pal(n = 6, name = "Reds")
+# Define colors: "Paired" palette for the main groups and a separate color for "Other".
+risk_colors <- brewer.pal(n=6, name = "Reds")
 
-# Create the first donut chart based on risk groups
-global_donut <- ggplot(global_dat, aes(x = 2, y = percentage, fill = wgi.risk)) +
+# Create donut chart based on risk groups
+risk_donut <- ggplot(risk_dat, aes(x = 2, y = percentage, fill = wgi.risk)) +
   geom_bar(stat = "identity", width = 1, position = position_stack(reverse = TRUE)) +
   coord_polar(theta = "y") +
   xlim(c(0.5, 2.5)) +
@@ -148,14 +153,55 @@ global_donut <- ggplot(global_dat, aes(x = 2, y = percentage, fill = wgi.risk)) 
             position = position_stack(vjust = 0.5, reverse = TRUE))
 
 # Save the first plot as a PNG file.
-ggsave("global_seafood_risk_levels.png", plot = global_donut, width = 8, height = 8)
+ggsave("global_seafood_risk_levels.png", plot = risk_donut, width = 8, height = 8)
+
+##############################################################################
+# Plot total seafood risk production scores with SSRT coverage
+global_dat <- df_risk %>%
+  group_by(wgi.risk, SSRT.YN) %>%
+  summarise(volume = sum(Volume..mt., na.rm = TRUE), .groups = 'drop') %>%
+  mutate(percentage = (volume / sum(volume) * 100))
+
+global_dat$label <- paste(global_dat$wgi.risk, " (SSRT:", global_dat$SSRT.YN, ")")
+
+# Manually set the order of the categories in the legend.
+global_dat$label <- factor(global_dat$label, levels = c(unique(global_dat$label)))
+
+# Define colors: "Paired" palette for the main groups and a separate color for "Other".
+paired_colors <- brewer.pal(10, "Paired") # one for each pairing (Very Low Risk N and Very Low Risk Y, etc)
+global_colors <- c("grey50", paired_colors)
+
+# Create donut chart based on risk groups
+global_donut <- ggplot(global_dat, aes(x = 2, y = percentage, fill = label)) +
+  geom_bar(stat = "identity", width = 1, position = position_stack(reverse = TRUE)) +
+  coord_polar(theta = "y") +
+  xlim(c(0.5, 2.5)) +
+  labs(
+    title = "Seafood Risk",
+    subtitle = "Based on World Governance Index Rule of Law Scores",
+    fill = "Category"
+  ) +
+  theme_void() +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5)
+  ) +
+  # Use the manual color palette.
+  scale_fill_manual(values = global_colors) +
+  # Add text labels for percentages inside the chart.
+  geom_text(aes(label = sprintf("%.1f%%", percentage)),
+            position = position_stack(vjust = 0.5, reverse = TRUE))
+
+# Save the first plot as a PNG file.
+ggsave("global_seafood_risk_levels_with_SSRT_coverage.png", plot = global_donut, width = 8, height = 8)
+
+##############################################################################
+# VERY HIGH RISK
 
 # Then for each risk category, create a new donut showing SSRT coverage
 # Define the three groups of interest.
 groups_of_interest <- c("Shrimp and prawn", "Tuna", "Squid and cuttlefish")
-
-##############################################################################
-# VERY HIGH RISK
 
 very_hi_dat <- df_risk %>%
   filter(wgi.risk == "Very High Risk") %>%
@@ -181,6 +227,8 @@ very_hi_dat <- df_risk %>%
   mutate(percentage = (volume / sum(volume) * 100))
 
 very_hi_dat$label <- paste(very_hi_dat$SSRT.group, " (SSRT:", very_hi_dat$SSRT.YN, ")")
+
+# FIX IT - here and below, is there a way to set the order dynamically (not manually each time?)
 # Manually set the order of the categories in the legend.
 very_hi_dat$label <- factor(very_hi_dat$label, 
                             levels = c("Shrimp and prawn  (SSRT: N )", 
@@ -190,13 +238,14 @@ very_hi_dat$label <- factor(very_hi_dat$label,
                                        "Tuna  (SSRT: Y )",
                                        "Other  (SSRT: N )"))
 
-# Get 3 shades for Shrimp=
+# FIX IT - here and below, is there a way to set the colors just once, and not manually for each plot?
+# Shrimp colors
 shrimp_colors <- brewer.pal(n = 5, name = "Reds")[c(2,4)] 
-# Get 3 shades for Squid=
+# Squid colors
 squid_colors <- brewer.pal(n = 5, name = "Blues")[3]
-# Get 3 shades for Tuna
+# Tuna colors
 tuna_colors <- brewer.pal(n = 5, name = "Greens")[c(2,4)] 
-# Define the two shades of gray for 'Other'
+# Other colors
 other_colors <- c("grey50") 
 # Combine the colors into a single vector, maintaining the order of the data
 very_hi_colors <- c(shrimp_colors, squid_colors, tuna_colors, other_colors)
@@ -260,13 +309,13 @@ hi_dat$label <- factor(hi_dat$label,
                                   "Tuna  (SSRT: Y )",
                                   "Other  (SSRT: N )"))
 
-# Get 3 shades for Shrimp=
+# Shrimp colors
 shrimp_colors <- brewer.pal(n = 5, name = "Reds")[c(2,4)] 
-# Get 3 shades for Squid=
+# Squid colors
 squid_colors <- brewer.pal(n = 5, name = "Blues")[3]
-# Get 3 shades for Tuna
+# Tuna colors
 tuna_colors <- brewer.pal(n = 5, name = "Greens")[c(2,4)] 
-# Define the two shades of gray for 'Other'
+# Other colors
 other_colors <- c("grey50") 
 # Combine the colors into a single vector, maintaining the order of the data
 hi_colors <- c(shrimp_colors, squid_colors, tuna_colors, other_colors)
@@ -332,13 +381,13 @@ med_dat$label <- factor(med_dat$label,
                                   "Tuna  (SSRT: Y )",
                                   "Other  (SSRT: N )"))
 
-# Get 3 shades for Shrimp=
+# Shrimp colors
 shrimp_colors <- brewer.pal(n = 5, name = "Reds")[c(2,4)] 
-# Get 3 shades for Squid=
+# Squid colors
 squid_colors <- brewer.pal(n = 5, name = "Blues")[c(2,4)] 
-# Get 3 shades for Tuna
+# Tuna colors
 tuna_colors <- brewer.pal(n = 5, name = "Greens")[c(2,4)] 
-# Define the two shades of gray for 'Other'
+# Other colors
 other_colors <- c("grey50") 
 # Combine the colors into a single vector, maintaining the order of the data
 med_colors <- c(shrimp_colors, squid_colors, tuna_colors, other_colors)
@@ -365,3 +414,214 @@ med_donut <- ggplot(med_dat, aes(x = 2, y = percentage, fill = label)) +
             position = position_stack(vjust = 0.5, reverse = TRUE))
 
 ggsave("SSRT_coverage_of_medium_risk_seafood.png", plot = med_donut, width = 8, height = 8)
+
+##############################################################################
+# LOW RISK
+
+low_dat <- df_risk %>%
+  filter(wgi.risk == "Low Risk") %>%
+  group_by(SSRT.group, SSRT.YN, wgi.risk) %>%
+  summarise(volume = sum(Volume..mt., na.rm = TRUE), .groups = 'drop') %>%
+  mutate(
+    # Check if the value in 'SSRT.group' is NOT in 'groups_of_interest'
+    SSRT.group = if_else(
+      !SSRT.group %in% groups_of_interest,
+      # If the value is NOT in the list, replace it with NA
+      NA_character_,
+      # If the value IS in the list, keep the original value
+      SSRT.group
+    )
+  ) %>%
+  # Summarise again with the new labels
+  group_by(SSRT.group, SSRT.YN, wgi.risk) %>%
+  summarise(volume = sum(volume, na.rm = TRUE), .groups = 'drop') %>%
+  mutate(
+    # Replace all NA values in the 'SSRT.group' column with "Other"
+    SSRT.group = replace_na(SSRT.group, "Other")
+  ) %>%
+  mutate(percentage = (volume / sum(volume) * 100))
+
+low_dat$label <- paste(low_dat$SSRT.group, " (SSRT:", low_dat$SSRT.YN, ")")
+
+# Manually set the order of the categories in the legend.
+low_dat$label <- factor(low_dat$label, 
+                        levels = c("Shrimp and prawn  (SSRT: N )", 
+                                   "Squid and cuttlefish  (SSRT: N )",
+                                   "Tuna  (SSRT: N )",
+                                   "Tuna  (SSRT: Y )",
+                                   "Other  (SSRT: N )"))
+
+# Shrimp colors
+shrimp_colors <- brewer.pal(n = 5, name = "Reds")[2] 
+# Squid colors
+squid_colors <- brewer.pal(n = 5, name = "Blues")[2] 
+# Tuna colors
+tuna_colors <- brewer.pal(n = 5, name = "Greens")[c(2,4)] 
+# Other colors
+other_colors <- c("grey50") 
+# Combine the colors into a single vector, maintaining the order of the data
+low_colors <- c(shrimp_colors, squid_colors, tuna_colors, other_colors)
+
+low_donut <- ggplot(low_dat, aes(x = 2, y = percentage, fill = label)) +
+  geom_bar(stat = "identity", width = 1, position = position_stack(reverse = TRUE)) +
+  coord_polar(theta = "y") +
+  xlim(c(0.5, 2.5)) +
+  labs(
+    title = "SSRT Coverage of Low Risk Seafood Production",
+    subtitle = "Based on World Governance Index Rule of Law",
+    fill = "Category"
+  ) +
+  theme_void() +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5)
+  ) +
+  # Use the manual color palette.
+  scale_fill_manual(values = low_colors) +
+  # Add text labels for percentages inside the chart.
+  geom_text(aes(label = sprintf("%.1f%%", percentage)),
+            position = position_stack(vjust = 0.5, reverse = TRUE))
+
+ggsave("SSRT_coverage_of_low_risk_seafood.png", plot = low_donut, width = 8, height = 8)
+
+
+##############################################################################
+# VERY LOW RISK
+
+very_low_dat <- df_risk %>%
+  filter(wgi.risk == "Very Low Risk") %>%
+  group_by(SSRT.group, SSRT.YN, wgi.risk) %>%
+  summarise(volume = sum(Volume..mt., na.rm = TRUE), .groups = 'drop') %>%
+  mutate(
+    # Check if the value in 'SSRT.group' is NOT in 'groups_of_interest'
+    SSRT.group = if_else(
+      !SSRT.group %in% groups_of_interest,
+      # If the value is NOT in the list, replace it with NA
+      NA_character_,
+      # If the value IS in the list, keep the original value
+      SSRT.group
+    )
+  ) %>%
+  # Summarise again with the new labels
+  group_by(SSRT.group, SSRT.YN, wgi.risk) %>%
+  summarise(volume = sum(volume, na.rm = TRUE), .groups = 'drop') %>%
+  mutate(
+    # Replace all NA values in the 'SSRT.group' column with "Other"
+    SSRT.group = replace_na(SSRT.group, "Other")
+  ) %>%
+  mutate(percentage = (volume / sum(volume) * 100))
+
+very_low_dat$label <- paste(very_low_dat$SSRT.group, " (SSRT:", very_low_dat$SSRT.YN, ")")
+
+# Manually set the order of the categories in the legend.
+very_low_dat$label <- factor(very_low_dat$label, 
+                        levels = c("Shrimp and prawn  (SSRT: N )", 
+                                   "Squid and cuttlefish  (SSRT: N )",
+                                   "Tuna  (SSRT: N )",
+                                   "Tuna  (SSRT: Y )",
+                                   "Other  (SSRT: N )"))
+
+# Shrimp colors
+shrimp_colors <- brewer.pal(n = 5, name = "Reds")[2] 
+# Squid colors
+squid_colors <- brewer.pal(n = 5, name = "Blues")[2] 
+# Tuna colors
+tuna_colors <- brewer.pal(n = 5, name = "Greens")[c(2,4)] 
+# Other colors
+other_colors <- c("grey50") 
+# Combine the colors into a single vector, maintaining the order of the data
+very_low_colors <- c(shrimp_colors, squid_colors, tuna_colors, other_colors)
+
+very_low_donut <- ggplot(very_low_dat, aes(x = 2, y = percentage, fill = label)) +
+  geom_bar(stat = "identity", width = 1, position = position_stack(reverse = TRUE)) +
+  coord_polar(theta = "y") +
+  xlim(c(0.5, 2.5)) +
+  labs(
+    title = "SSRT Coverage of Very Low Risk Seafood Production",
+    subtitle = "Based on World Governance Index Rule of Law",
+    fill = "Category"
+  ) +
+  theme_void() +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5)
+  ) +
+  # Use the manual color palette.
+  scale_fill_manual(values = very_low_colors) +
+  # Add text labels for percentages inside the chart.
+  geom_text(aes(label = sprintf("%.1f%%", percentage)),
+            position = position_stack(vjust = 0.5, reverse = TRUE))
+
+ggsave("SSRT_coverage_of_very_low_risk_seafood.png", plot = very_low_donut, width = 8, height = 8)
+
+##############################################################################
+# NO RISK SCORES
+
+no_scores_dat <- df_risk %>%
+  filter(wgi.risk == "No Risk Score") %>%
+  group_by(SSRT.group, SSRT.YN, wgi.risk) %>%
+  summarise(volume = sum(Volume..mt., na.rm = TRUE), .groups = 'drop') %>%
+  mutate(
+    # Check if the value in 'SSRT.group' is NOT in 'groups_of_interest'
+    SSRT.group = if_else(
+      !SSRT.group %in% groups_of_interest,
+      # If the value is NOT in the list, replace it with NA
+      NA_character_,
+      # If the value IS in the list, keep the original value
+      SSRT.group
+    )
+  ) %>%
+  # Summarise again with the new labels
+  group_by(SSRT.group, SSRT.YN, wgi.risk) %>%
+  summarise(volume = sum(volume, na.rm = TRUE), .groups = 'drop') %>%
+  mutate(
+    # Replace all NA values in the 'SSRT.group' column with "Other"
+    SSRT.group = replace_na(SSRT.group, "Other")
+  ) %>%
+  mutate(percentage = (volume / sum(volume) * 100))
+
+no_scores_dat$label <- paste(no_scores_dat$SSRT.group, " (SSRT:", no_scores_dat$SSRT.YN, ")")
+
+# Manually set the order of the categories in the legend.
+no_scores_dat$label <- factor(no_scores_dat$label, 
+                             levels = c("Shrimp and prawn  (SSRT: N )", 
+                                        "Squid and cuttlefish  (SSRT: N )",
+                                        "Tuna  (SSRT: N )",
+                                        "Other  (SSRT: N )"))
+
+# Shrimp colors
+shrimp_colors <- brewer.pal(n = 5, name = "Reds")[2] 
+# Squid colors
+squid_colors <- brewer.pal(n = 5, name = "Blues")[2] 
+# Tuna colors
+tuna_colors <- brewer.pal(n = 5, name = "Greens")[2] 
+# Other colors
+other_colors <- c("grey50") 
+# Combine the colors into a single vector, maintaining the order of the data
+no_scores_colors <- c(shrimp_colors, squid_colors, tuna_colors, other_colors)
+
+no_scores_donut <- ggplot(no_scores_dat, aes(x = 2, y = percentage, fill = label)) +
+  geom_bar(stat = "identity", width = 1, position = position_stack(reverse = TRUE)) +
+  coord_polar(theta = "y") +
+  xlim(c(0.5, 2.5)) +
+  labs(
+    title = "SSRT Coverage of Seafood Production with No Risk Score",
+    subtitle = "Based on World Governance Index Rule of Law",
+    fill = "Category"
+  ) +
+  theme_void() +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5)
+  ) +
+  # Use the manual color palette.
+  scale_fill_manual(values = no_scores_colors) +
+  # Add text labels for percentages inside the chart.
+  geom_text(aes(label = sprintf("%.1f%%", percentage)),
+            position = position_stack(vjust = 0.5, reverse = TRUE))
+
+ggsave("SSRT_coverage_of_missing_risk_score_seafood.png", plot = no_scores_donut, width = 8, height = 8)
+
