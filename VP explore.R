@@ -86,7 +86,7 @@ ggplot(plot_data, aes(x = Assessment.End.Time.Clean, y = cumulative_total_sites)
   geom_vline(xintercept = min(plot_data$Assessment.End.Time.Clean, na.rm = TRUE), 
              color = "red", linetype = "dotted") +
   annotate("text", x = min(plot_data$Assessment.End.Time.Clean, na.rm = TRUE), 
-           y = max(plot_data$cumulative_total_sites) * 0.7, 
+           y = max(plot_data$cumulative_total_sites) * 0.3, 
            label = "Project start with Minh Phu", color = "red", angle = 90, vjust = -0.5) +
   
   # 2. CASES Partnership (Jan 1, 2022)
@@ -98,7 +98,7 @@ ggplot(plot_data, aes(x = Assessment.End.Time.Clean, y = cumulative_total_sites)
   # 3. CAMIMEX Partnership (Jan 1, 2023)
   geom_vline(xintercept = as.POSIXct("2023-01-01"), color = "red", linetype = "dotted") +
   annotate("text", x = as.POSIXct("2023-01-01"), 
-           y = max(plot_data$cumulative_total_sites) * 0.1, 
+           y = max(plot_data$cumulative_total_sites) * 0.55, 
            label = "CAMIMEX partnership", color = "red", angle = 90, vjust = -0.5) +
   theme_minimal() +
   labs(
