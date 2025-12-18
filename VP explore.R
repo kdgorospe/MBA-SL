@@ -18,7 +18,31 @@ clean_text <- gsub(", ", "; ", raw_text)
 # Read that cleaned text as a CSV
 df_header <- read.csv(text = clean_text, sep = ",")
 
+# Data filtering
+vnm_header <- df_header %>%
+  filter(Country == "Vietnam") %>%
+  filter(Group.Phase != "Pilot") %>%
+  filter(!Project.Name %in% c("Minh Phu: Pilot Groups", "Demonstration", "Testing")) %>%
+  filter(Snapshot.Assessment.Grouping.Status %in% c("Green", "Complete")) %>% # Unclear what is green vs complete / filtering here drops 1500+ rows
+  filter(SGS.Group.Status == "Closed") %>%
+  filter(Company.Group.Status == "Closed") %>%
+  # Select important columns (see next block of code for exploring each column)
+  #select(CreatedOn, Assessment.End.Time, Project.Name, Site.Reference, Assessor.Type, Latitude, Longitude, Group.Total.Sites, Assessment.Outcome, Snapshot.Assessment.Grouping.Outcome) %>%
+  # Clean dates
+  mutate(CreatedOn.Clean = mdy_hms(CreatedOn)) %>%
+  mutate(Assessment.End.Time.Clean = mdy_hms(Assessment.End.Time)) 
 
+write.csv(vnm_header, file = "vnm_header.csv", row.names = FALSE, quote = FALSE)
+
+## FIX IT: Group.Name doesn't export correctly, need to create a new column for Group.ID based on matching across other group details
+## TRY: Group.Total.Sites, Project.Name (e.g., Minh Phu, CASES, CAMIMEX), 
+# vnm_header %>%
+#   group_by(Group.Total.Sites, Project.Name, Group.Company.Sample.Size, Snapshot.Assessment.Grouping.Iteration.No, Assessor.Type) %>%
+#   summarize(count = n(), .groups = "drop") %>%
+#   filter(count >1)
+  
+
+###########################################################################
 # Explore which columns are useful before filtering and selecting (need to verify this with Reuben, Cormac, et al.):
 # Which columns have "Green" as a value
 green_columns <- vnm_header %>%
@@ -29,6 +53,25 @@ summary_counts <- vnm_header %>%
   select(all_of(green_columns)) %>%
   pivot_longer(cols = everything(), names_to = "column_name", values_to = "value") %>%
   count(column_name, value)
+
+
+# Create summaries of data columns
+# Define list of columns to summarize
+target_columns <- c("Assessment.Id", "Assessment.Status", "Assessment.Type", "Site.Name", "Site.Description", "Site.Reference",
+                    "Group.Name", "Group.Phase", "Project.Name", "Assessor.Type", "Snapshot.Assessment.Grouping.Status", "Snapshot.Assessment.Grouping.Iteration.No")
+# Convert to factors and create a summary
+vnm_summary <- vnm_header %>%
+  # Select and convert specific columns to factors
+  mutate(across(all_of(target_columns), as.factor)) %>%
+  # Reshape data to make it easy to count everything together
+  pivot_longer(cols = all_of(target_columns), 
+               names_to = "column_name", 
+               values_to = "factor_level") %>%
+  # Group by the column name and the specific level to get counts
+  count(column_name, factor_level) %>%
+  filter(n > 1) # only interested in non-unique factors - e.g., duplicates could mean reassessments that need to be filtered out
+
+# Notes on data columns:
 # Red/Green/Yellow: Assessment.Outcome or Snapshot.Assessment.Grouping.Outcome - unclear what the difference is
 # For sample size: Group.Company.Sample.Size, Snapshot.Group.Company.Sample.Size, Group.SGS.Sample.Size, Snapshot.Group.SGS.Sample.Size - unclear what the difference is
 # For total number in group: Group.Total.Sites 
@@ -39,20 +82,8 @@ summary_counts <- vnm_header %>%
 # Group.Name: all rows say "System.Collections.Generic.HashSet`1[SGS.Localization.Entities.DynamicTranslation]"
 # Standard.Version: all 2.1 (shrimp standard)
 
-vnm_header <- df_header %>%
-  filter(Country == "Vietnam") %>%
-  filter(Group.Phase != "Pilot") %>%
-  filter(!Project.Name %in% c("Minh Phu: Pilot Groups", "Demonstration", "Testing")) %>%
-  # Select important columns
-  # select(CreatedOn, Assessment.End.Time, Project.Name, Site.Reference, Assessor.Type, Latitude, Longitude, Group.Total.Sites, Assessment.Outcome, Snapshot.Assessment.Grouping.Outcome) %>%
-  select(CreatedOn, Assessment.End.Time, Project.Name, Site.Reference, Assessor.Type, Latitude, Longitude, Group.Total.Sites, Assessment.Outcome, Snapshot.Assessment.Grouping.Outcome, Snapshot.Assessment.Grouping.Status, Company.Group.Status, SGS.Group.Status) %>%
-  filter(Snapshot.Assessment.Grouping.Status %in% c("Green", "Complete")) %>% # Unclear what is green vs complete / filtering here drops 1500+ rows
-  filter(SGS.Group.Status == "Closed") %>%
-  filter(Company.Group.Status == "Closed") %>%
-  # Clean dates
-  mutate(CreatedOn.Clean = mdy_hms(CreatedOn)) %>%
-  mutate(Assessment.End.Time.Clean = mdy_hms(Assessment.End.Time))
-
+# END EXPLORING OF DATA COLUMNS
+###########################################################################
 
 # Try plotting Assessment Outcome x Group size through time?
 ### BENCHMARK: MBA Vietnam website says 4,174 farms verified green as of December 2025
@@ -76,7 +107,7 @@ plot_data <- vnm_header_co %>%
   filter(Assessment.Outcome == "Green") %>%
   # Arrange by time to ensure the cumulative count flows correctly
   arrange(Assessment.End.Time.Clean) %>%
-  # Create a cumulative count (row_number() works since each row = 1 event)
+  # Create a cumulative count
   mutate(cumulative_total_sites = cumsum(Group.Total.Sites)) 
 
 # 2. Create the plot
